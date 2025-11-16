@@ -3,20 +3,10 @@ package main
 import (
 	"encoding/json"
 	"io/ioutil"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 )
-
-// Utility to open and parse JSON files
-func OpenJSON(path string, v interface{}) error {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, v)
-}
 
 // Get all servers from file, with options for codesOnly and activeOnly
 func GetAllServers(codesOnly, activeOnly bool) ([]string, error) {
@@ -127,100 +117,6 @@ func GetSignalName(prefix string, block interface{}, trackDirection, signalDirec
 		return prefix + blockStr
 	}
 	return prefix + blockStr + "N"
-}
-
-// Convert train/timetable data (stub)
-func ConvertData(server string, layoutNr string, lineData map[string]interface{}) (map[string]interface{}, error) {
-	// Read timetable, stations, trains
-	ttData, err := ioutil.ReadFile("../files/" + server + ".timetable.json")
-	if err != nil {
-		return map[string]interface{}{"error": "Timetable for server " + server + " could not be downloaded."}, nil
-	}
-	var tt []map[string]interface{}
-	if err := json.Unmarshal(ttData, &tt); err != nil {
-		return map[string]interface{}{"error": "Could not open timetable file."}, nil
-	}
-	stationsData, err := ioutil.ReadFile("../files/" + server + ".stations.json")
-	if err != nil {
-		return map[string]interface{}{"error": "Could not open stations file."}, nil
-	}
-	var stationsWrap struct{ Data []map[string]interface{} `json:"data"` }
-	if err := json.Unmarshal(stationsData, &stationsWrap); err != nil {
-		return map[string]interface{}{"error": "Could not open stations file."}, nil
-	}
-	trainsData, err := ioutil.ReadFile("../files/" + server + ".trains.json")
-	if err != nil {
-		return map[string]interface{}{"error": "Could not open trains file."}, nil
-	}
-	var trainsWrap struct{ Data []map[string]interface{} `json:"data"` }
-	if err := json.Unmarshal(trainsData, &trainsWrap); err != nil {
-		return map[string]interface{}{"error": "Could not open trains file."}, nil
-	}
-	trains := trainsWrap.Data
-	stations := stationsWrap.Data
-
-	includedStations, _ := GetIncludedStations(layoutNr)
-	stationsFrLineData := lineData["stations"].([]interface{})
-	stationsNames := lineData["stations_names"].([]interface{})
-	stationsIds := lineData["stations_ids"].([]interface{})
-	entranceSignals := lineData["entrance_signals"].([]interface{})
-	signalRules := lineData["signal_rules"].([]interface{})
-	remoteStations := lineData["remote_stations"].([]interface{})
-
-	response := map[string]interface{}{
-		"error": nil,
-		"data": map[string]interface{}{
-			"t": []interface{}{},
-			"s": []interface{}{},
-		},
-	}
-
-	// Process stations
-	for _, stn := range stationsFrLineData {
-		stnMap := stn.(map[string]interface{})
-		thisPointID := int(stnMap["id"].(float64))
-		dispatchedBy := GetStationUser(stations, stnMap["name"].(string))
-		status := "bot"
-		if dispatchedBy != "" {
-			status = "user"
-		}
-		for _, rmStn := range remoteStations {
-			rmStnMap := rmStn.(map[string]interface{})
-			if int(rmStnMap["id"].(float64)) == thisPointID {
-				masterStn := int(rmStnMap["controlled_by"].(float64))
-				remoteUser := GetStationUser(stations, GetStationById(stationsFrLineData, masterStn))
-				if remoteUser != "" {
-					status = "remote"
-				}
-			}
-		}
-		response["data"].(map[string]interface{})["s"] = append(response["data"].(map[string]interface{})["s"].([]interface{}), map[string]interface{}{
-			"Name": stnMap["name"],
-			"id": thisPointID,
-			"status": status,
-			"dispatched_by": dispatchedBy,
-		})
-	}
-
-	// Process trains and timetables (simplified, full logic can be expanded)
-	for _, thisTT := range tt {
-		trainNo := thisTT["trainNoLocal"].(string)
-		var thisTrain map[string]interface{}
-		for _, train := range trains {
-			if train["TrainNoLocal"].(string) == trainNo {
-				thisTrain = train
-				break
-			}
-		}
-		if thisTrain != nil {
-			thisTT["trainObject"] = thisTrain
-		} else {
-			thisTT["trainObject"] = nil
-		}
-		response["data"].(map[string]interface{})["t"] = append(response["data"].(map[string]interface{})["t"].([]interface{}), thisTT)
-	}
-
-	return response, nil
 }
 
 // GetStationUser returns the SteamId of the dispatcher for a station
